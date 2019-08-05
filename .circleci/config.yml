@@ -1,58 +1,51 @@
-# PHP CircleCI 2.0 configuration file
-#
-# Check https://circleci.com/docs/2.0/language-php/ for more details
-#
-version: 2
-jobs:
-  build:
-    docker:
-      # Specify the version you desire here
-      - image: circleci/php:7.1-node-browsers
+# PHP
+# Test and package your PHP project.
+# Add steps that run tests, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/php
 
-      # Specify service dependencies here if necessary
-      # CircleCI maintains a library of pre-built images
-      # documented at https://circleci.com/docs/2.0/circleci-images/
-      # Using the RAM variation mitigates I/O contention
-      # for database intensive operations.
-      # - image: circleci/mysql:5.7-ram
-      #
-      # - image: redis:2.8.19
+trigger:
+- master
 
-    steps:
-      - checkout
+pool:
+  vmImage: 'ubuntu-latest'
 
-      - run: sudo apt update # PHP CircleCI 2.0 Configuration File# PHP CircleCI 2.0 Configuration File sudo apt install zlib1g-dev libsqlite3-dev
-      - run: sudo docker-php-ext-install zip
+variables:
+  phpVersion: 7.2
 
-      # Download and cache dependencies
-      - restore_cache:
-          keys:
-            # "composer.lock" can be used if it is committed to the repo
-            - v1-dependencies-{{ checksum "composer.json" }}
-            # fallback to using the latest cache if no exact match is found
-            - v1-dependencies-
+steps:
+- script: |
+    sudo update-alternatives --set php /usr/bin/php$(phpVersion)
+    sudo update-alternatives --set phar /usr/bin/phar$(phpVersion)
+    sudo update-alternatives --set phpdbg /usr/bin/phpdbg$(phpVersion)
+    sudo update-alternatives --set php-cgi /usr/bin/php-cgi$(phpVersion)
+    sudo update-alternatives --set phar.phar /usr/bin/phar.phar$(phpVersion)
+    php -version
+  displayName: 'Use PHP version $(phpVersion)'
 
-      - run: composer install -n --prefer-dist
+- script: google-chrome --version
+  displayName: 'Google Chrome Version'
 
-      - save_cache:
-          key: v1-dependencies-{{ checksum "composer.json" }}
-          paths:
-            - ./vendor
-      - restore_cache:
-          keys:
-            - node-v1-{{ checksum "package.json" }}
-            - node-v1-
-      - run: yarn install
-      - save_cache:
-          key: node-v1-{{ checksum "package.json" }}
-          paths:
-            - node_modules
+- script: sudo /sbin/modprobe tun
+- script: sudo apt-get install openconnect
+#- script: xvfb-run sudo openconnect vpn.marmonkeystone.com --user='sudheer' --key-password='MKc0nsu1t' --no-cert-check >/dev/null 2>&1 &
+- script: xvfb-run echo 'MKc0nsu1t' | sudo openconnect vpn.marmonkeystone.com --user='sudheer' --passwd-on-stdin --no-cert-check >/dev/null 2>&1 &
+#- script: printf '%s\n' 'MKc0nsu1t'
+#- script: printf '%s\n' 
+  displayName: 'VPN Connection'
 
-      # prepare the database
-      - run: touch storage/testing.sqlite
-      - run: php artisan migrate --env=testing --database=sqlite_testing --force
 
-      # run tests with phpunit or codecept
-      #- run: ./vendor/bin/phpunit
-      - run: ./vendor/bin/codecept build
-      - run: ./vendor/bin/codecept run
+- script: chmod +777 chromedriver
+  displayName: 'Update Chrome Driver'
+
+- script: xvfb-run java -Dwebdriver.chrome.driver=chromedriver -jar SeleniumStandaloneServer.jar >/dev/null 3>&1 &
+  displayName: 'Selenium Standalone Server Running..'
+
+- script: chmod +777 composer.json
+  displayName: 'Update Composer .JSON file Permissions'
+
+- script: composer install --no-interaction --prefer-dist
+  displayName: 'composer install'
+
+- script: phpunit --configuration phpunit.xml
+  displayName: 'Run tests with phpunit'
+
