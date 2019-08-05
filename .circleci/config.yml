@@ -1,51 +1,41 @@
-# PHP
-# Test and package your PHP project.
-# Add steps that run tests, save build artifacts, deploy, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/php
-
-trigger:
-- master
-
-pool:
-  vmImage: 'ubuntu-latest'
-
-variables:
-  phpVersion: 7.2
-
-steps:
-- script: |
-    sudo update-alternatives --set php /usr/bin/php$(phpVersion)
-    sudo update-alternatives --set phar /usr/bin/phar$(phpVersion)
-    sudo update-alternatives --set phpdbg /usr/bin/phpdbg$(phpVersion)
-    sudo update-alternatives --set php-cgi /usr/bin/php-cgi$(phpVersion)
-    sudo update-alternatives --set phar.phar /usr/bin/phar.phar$(phpVersion)
-    php -version
-  displayName: 'Use PHP version $(phpVersion)'
-
-- script: google-chrome --version
-  displayName: 'Google Chrome Version'
-
-- script: sudo /sbin/modprobe tun
-- script: sudo apt-get install openconnect
-#- script: xvfb-run sudo openconnect vpn.marmonkeystone.com --user='sudheer' --key-password='MKc0nsu1t' --no-cert-check >/dev/null 2>&1 &
-- script: xvfb-run echo 'MKc0nsu1t' | sudo openconnect vpn.marmonkeystone.com --user='sudheer' --passwd-on-stdin --no-cert-check >/dev/null 2>&1 &
-#- script: printf '%s\n' 'MKc0nsu1t'
-#- script: printf '%s\n' 
-  displayName: 'VPN Connection'
-
-
-- script: chmod +777 chromedriver
-  displayName: 'Update Chrome Driver'
-
-- script: xvfb-run java -Dwebdriver.chrome.driver=chromedriver -jar SeleniumStandaloneServer.jar >/dev/null 3>&1 &
-  displayName: 'Selenium Standalone Server Running..'
-
-- script: chmod +777 composer.json
-  displayName: 'Update Composer .JSON file Permissions'
-
-- script: composer install --no-interaction --prefer-dist
-  displayName: 'composer install'
-
-- script: phpunit --configuration phpunit.xml
-  displayName: 'Run tests with phpunit'
-
+version: 2
+jobs:
+  build:
+    docker:
+    - image: circleci/php:7.1-node-browsers
+    steps:
+    - checkout
+    - run: sudo apt update
+    - run: sudo docker-php-ext-install zip
+    - restore_cache:
+        keys:
+        - v1-dependencies-{{ checksum "composer.json" }}
+        - v1-dependencies-
+    - run: composer install -n --prefer-dist
+    - save_cache:
+        key: v1-dependencies-{{ checksum "composer.json" }}
+        paths:
+        - ./vendor
+    - restore_cache:
+        keys:
+        - node-v1-{{ checksum "package.json" }}
+        - node-v1-
+    - run: yarn install
+    - save_cache:
+        key: node-v1-{{ checksum "package.json" }}
+        paths:
+        - node_modules
+    - run: touch storage/testing.sqlite
+    - run: php artisan migrate --env=testing --database=sqlite_testing --force
+    - run: ./vendor/bin/codecept build
+    - run: ./vendor/bin/codecept run
+    -run: google-chrome --version
+    -run: chmod +777 chromedriver
+    -run: xvfb-run java -Dwebdriver.chrome.driver=chromedriver -jar SeleniumStandaloneServer.jar >/dev/null 3>&1 &
+    -run: composer install --no-interaction --prefer-dist
+    -run: phpunit --configuration phpunit.xml
+workflows:
+  version: 2
+  workflow:
+    jobs:
+    - build
